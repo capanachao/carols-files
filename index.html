@@ -194,16 +194,41 @@
 </div>
 
 <script>
-/* ===== STORAGE (nunca trava a interface) ===== */
+/* ===== STORAGE (localStorage para Netlify + fallback mem) ===== */
 const mem={}; let storageBad=false;
-const hasStore=()=>{ try{ return !!window.storage; }catch(e){ return false; } };
-const withTimeout=(p,ms=800)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),ms))]);
+const hasStore=()=>{ try{ return !!window.localStorage; }catch(e){ return false; } };
 const Store={
-  async get(k){ if(k in mem) return mem[k]; if(storageBad||!hasStore()) return null;
-    try{ const r=await withTimeout(window.storage.get(k)); const v=(r&&r.value!=null)?JSON.parse(r.value):null; if(v!=null) mem[k]=v; return v; }
-    catch(e){ if(e&&e.message==='timeout') storageBad=true; return null; } },
-  async set(k,v){ mem[k]=v; if(storageBad||!hasStore()) return; try{ await withTimeout(window.storage.set(k,JSON.stringify(v))); }catch(e){ if(e&&e.message==='timeout') storageBad=true; } },
-  async del(k){ delete mem[k]; if(storageBad||!hasStore()) return; try{ await withTimeout(window.storage.delete(k)); }catch(e){ if(e&&e.message==='timeout') storageBad=true; } }
+  async get(k){ 
+    if(k in mem) return mem[k];
+    if(storageBad||!hasStore()) return null;
+    try{ 
+      const v=window.localStorage.getItem(k); 
+      const parsed=v?JSON.parse(v):null; 
+      if(parsed!=null) mem[k]=parsed; 
+      return parsed; 
+    }catch(e){ 
+      storageBad=true; 
+      return null; 
+    } 
+  },
+  async set(k,v){ 
+    mem[k]=v; 
+    if(storageBad||!hasStore()) return; 
+    try{ 
+      window.localStorage.setItem(k,JSON.stringify(v)); 
+    }catch(e){ 
+      storageBad=true; 
+    } 
+  },
+  async del(k){ 
+    delete mem[k]; 
+    if(storageBad||!hasStore()) return; 
+    try{ 
+      window.localStorage.removeItem(k); 
+    }catch(e){ 
+      storageBad=true; 
+    } 
+  }
 };
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const debounce=(fn,ms=500)=>{ let t; return(...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; };
