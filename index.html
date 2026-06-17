@@ -198,6 +198,9 @@
 </div>
 
 <script>
+/* ===== HELPERS ESSENCIAIS (antes de tudo) ===== */
+const debounce=(fn,ms=500)=>{ let t; return(...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; };
+
 /* ===== GOOGLE SHEETS CONFIG (mesmo padrão do Casinha) ===== */
 const SHEET_ID='1KhjcGYKTnaY6RduXD_LSipKRBaPWqrFWS19_0ycIzpc';
 const SERVICE_ACCOUNT={
@@ -286,15 +289,15 @@ async function saveData(){
     toast('✓ Salvo!');
   }catch(e){setSyncStatus('✕ erro','#c97b7b');toast('✕ Erro ao salvar: '+e.message);}
 }
-/* ===== MEMÓRIA LOCAL ===== */
+/* ===== MEMÓRIA LOCAL + AUTO-SAVE ===== */
 const mem={};
+const _autoSave=debounce(()=>saveData(),1200);
 const Store={
   async get(k){return mem[k]!==undefined?mem[k]:null;},
-  async set(k,v){mem[k]=v;},
-  async del(k){delete mem[k];}
+  async set(k,v){mem[k]=v;_autoSave();},
+  async del(k){delete mem[k];_autoSave();}
 };
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-const debounce=(fn,ms=500)=>{ let t; return(...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; };
 const fmtDate=d=>d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
 const todayKey=()=>new Date().toISOString().slice(0,10);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
