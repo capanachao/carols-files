@@ -175,7 +175,13 @@
 </style>
 
 <div id="home" class="screen active">
-  <div class="home-head"><div class="hi">Carol's Files</div><div class="sub" id="homeDate"></div></div>
+  <div class="home-head"><div class="hi">Carol's Files</div><div class="sub" id="homeDate"></div>
+    <div style="margin-top:16px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;font-family:var(--serif);font-size:13px;color:var(--ink-soft)">
+      <button class="btn sm" onclick="syncToCloud()" title="Salvar tudo na nuvem">☁ Enviar</button>
+      <button class="btn sm" onclick="syncFromCloud()" title="Carregar dados de outro dispositivo">⬇ Receber</button>
+      <span id="syncStatus" style="padding:5px 0;min-width:140px;text-align:center;opacity:0.8"></span>
+    </div>
+  </div>
   <div class="desktop" id="desktop"></div>
 </div>
 
@@ -230,6 +236,7 @@ const Store={
     } 
   }
 };
+const APPS_SCRIPT_URL="https://script.google.com/macros/s/AKfycby6PoDrD2ndGrJitjNVUrgkipN_dFBcPJTmNv2ze9Z6luzhPmR-bQv0n8wvu7xtQV1LDg/exec";
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const debounce=(fn,ms=500)=>{ let t; return(...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; };
 const fmtDate=d=>d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
@@ -237,6 +244,50 @@ const todayKey=()=>new Date().toISOString().slice(0,10);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const el=h=>{ const t=document.createElement('template'); t.innerHTML=h.trim(); return t.content.firstElementChild; };
 const INKS=['#4A3F44','#B98792','#1f1f1f'];
+
+/* ===== SINCRONIZAÇÃO COM GOOGLE SHEETS ===== */
+async function syncToCloud(){
+  try{
+    const status=document.getElementById('syncStatus');
+    if(status) status.textContent='Sincronizando…';
+    const dataToSync=Object.assign({},mem);
+    const r=await fetch(APPS_SCRIPT_URL,{method:'POST',body:JSON.stringify(dataToSync)});
+    const result=await r.json();
+    if(result.ok){
+      const now=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+      await Store.set('_lastSync',now);
+      if(status) status.textContent=`✓ Sincronizado às ${now}`;
+      toast('✓ Dados salvos na nuvem!');
+    }else throw new Error(result.error||'Erro desconhecido');
+  }catch(err){
+    console.error('Sync error:',err);
+    if(document.getElementById('syncStatus')) document.getElementById('syncStatus').textContent='✕ Erro ao sincronizar';
+    toast('✕ Erro ao sincronizar. Tente novamente.');
+  }
+}
+async function syncFromCloud(){
+  try{
+    const status=document.getElementById('syncStatus');
+    if(status) status.textContent='Carregando…';
+    const r=await fetch(APPS_SCRIPT_URL);
+    const data=await r.json();
+    if(data.error) throw new Error(data.error);
+    for(const [k,v] of Object.entries(data)){
+      if(!k.startsWith('_')) await Store.set(k,v);
+    }
+    if(data._lastSync) {
+      const now=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+      await Store.set('_lastSync',now);
+      if(status) status.textContent=`✓ Sincronizado às ${now}`;
+    }
+    toast('✓ Dados carregados da nuvem!');
+    location.reload();
+  }catch(err){
+    console.error('Load error:',err);
+    if(document.getElementById('syncStatus')) document.getElementById('syncStatus').textContent='✕ Erro ao carregar';
+    toast('✕ Erro ao carregar. Tente novamente.');
+  }
+}
 
 /* ===== DIÁLOGOS PRÓPRIOS (funcionam no iPad) ===== */
 function openModal(title,contentNode){
@@ -621,4 +672,8 @@ async function renderTimerLog(){ const log=await Store.get(K('timer:log'))||[]; 
 
 /* ===== INIT ===== */
 renderDesktop();
+(async()=>{
+  const last=await Store.get('_lastSync');
+  if(last) document.getElementById('syncStatus').textContent=`Última: ${last}`;
+})();
 </script>
