@@ -250,7 +250,8 @@ async function getAccessToken(){
   const jwt=`${si}.${s64}`;
   const r=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`});
   const j=await r.json();
-  if(!j.access_token)throw new Error('Token error');
+  console.log('[CF] token response status:',r.status,'ok:',r.ok);
+  if(!j.access_token)throw new Error('Token error: '+JSON.stringify(j));
   _tok=j.access_token;_tokExp=Date.now()+j.expires_in*1000;
   return _tok;
 }
@@ -270,32 +271,65 @@ function setSyncStatus(msg,color){const el=document.getElementById('syncStatus')
 async function loadData(){
   setSyncStatus('⟳ carregando…','#C9A2AC');
   try{
+    console.log('[CF] loadData: obtendo token...');
+    const token=await getAccessToken();
+    console.log('[CF] token OK, buscando planilha...');
     const data=await sheetsGet('Sheet1!A2:B');
-    if(data.values)data.values.forEach(row=>{if(row[0]&&row[1])try{mem[row[0]]=JSON.parse(row[1]);}catch(e){}});
+    console.log('[CF] resposta sheets:', JSON.stringify(data).slice(0,200));
+    if(data.error) throw new Error('Sheets API: '+data.error.message);
+    if(data.values)data.values.forEach(row=>{if(row[0]&&row[1])try{mem[row[0]]=JSON.parse(row[1]);}catch(e){console.warn('[CF] parse erro key='+row[0],e);}});
     const t=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     setSyncStatus('✓ '+t,'#9DB6A6');
-    toast('✓ Dados carregados!');
-  }catch(e){setSyncStatus('✕ erro','#c97b7b');toast('✕ Erro ao carregar: '+e.message);}
+    toast('✓ Dados carregados! ('+(data.values||[]).length+' itens)');
+  }catch(e){
+    console.error('[CF] loadData ERRO:',e);
+    setSyncStatus('✕ erro','#c97b7b');
+    toast('✕ Carregar: '+e.message);
+  }
 }
 async function saveData(){
   setSyncStatus('⟳ salvando…','#C9A2AC');
   try{
+    console.log('[CF] saveData: obtendo token...');
+    const token=await getAccessToken();
+    console.log('[CF] token OK, itens em mem:',Object.keys(mem).length);
     await sheetsClear('Sheet1!A2:B');
     await sheetsUpdate('Sheet1!A1',[['chave','valor']]);
     const rows=Object.entries(mem).map(([k,v])=>[k,JSON.stringify(v)]);
+    console.log('[CF] salvando',rows.length,'linhas...');
     if(rows.length)await sheetsUpdate('Sheet1!A2',rows);
     const t=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     setSyncStatus('✓ '+t,'#9DB6A6');
-    toast('✓ Salvo!');
-  }catch(e){setSyncStatus('✕ erro','#c97b7b');toast('✕ Erro ao salvar: '+e.message);}
+    toast('✓ Salvo! ('+rows.length+' itens)');
+  }catch(e){
+    console.error('[CF] saveData ERRO:',e);
+    setSyncStatus('✕ erro','#c97b7b');
+    toast('✕ Salvar: '+e.message);
+  }
 }
-/* ===== MEMÓRIA LOCAL + AUTO-SAVE ===== */
+/* ===== STORE: imagens → localStorage | resto → Sheets =====
+   Chaves de imagem (base64 grande) ficam no localStorage do device.
+   Todo o resto vai pro mem[] e é sincronizado com o Sheets.
+========================================================== */
 const mem={};
 const _autoSave=debounce(()=>saveData(),1200);
+const _isImg=k=>/^(vis:|affdraw:|vision:draw|notes:draw|jrndraw:)/.test(k);
+const _lsGet=k=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch(e){return null;}};
+const _lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch(e){console.warn('[CF] localStorage cheio:',k);}};
+const _lsDel=k=>{try{localStorage.removeItem(k);}catch(e){}};
 const Store={
-  async get(k){return mem[k]!==undefined?mem[k]:null;},
-  async set(k,v){mem[k]=v;_autoSave();},
-  async del(k){delete mem[k];_autoSave();}
+  async get(k){
+    if(_isImg(k))return _lsGet(k);
+    return mem[k]!==undefined?mem[k]:null;
+  },
+  async set(k,v){
+    if(_isImg(k)){_lsSet(k,v);return;}
+    mem[k]=v;_autoSave();
+  },
+  async del(k){
+    if(_isImg(k)){_lsDel(k);return;}
+    delete mem[k];_autoSave();
+  }
 };
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const fmtDate=d=>d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
