@@ -292,13 +292,12 @@ async function loadData(){
 async function saveData(){
   setSyncStatus('⟳ salvando…','#C9A2AC');
   try{
-    console.log('[CF] saveData: obtendo token...');
+    console.log('[CF] saveData: mem keys=',Object.keys(mem));
     const token=await getAccessToken();
-    console.log('[CF] token OK, itens em mem:',Object.keys(mem).length);
     await sheetsClear('Sheet1!A2:B');
     await sheetsUpdate('Sheet1!A1',[['chave','valor']]);
     const rows=Object.entries(mem).map(([k,v])=>[k,JSON.stringify(v)]);
-    console.log('[CF] salvando',rows.length,'linhas...');
+    console.log('[CF] salvando',rows.length,'linhas:',rows.map(r=>r[0]));
     if(rows.length)await sheetsUpdate('Sheet1!A2',rows);
     const t=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     setSyncStatus('✓ '+t,'#9DB6A6');
